@@ -5,9 +5,12 @@
 # Como usar: manageEndpoint adapter nomedoservico
 #            manageEndpoint (o script pergunta os parametros caso nenhum dado seja passado)
 #
-# Exemplo:
-#             manageEndpoint http F_CRM_QYSRACTDES
-#             manageEndpoint
+# Exemplos:
+#           manageEndpoint http F_CRM_QYSRACTDES
+#    		manageEndpoint web F_CRM_CNREPORTACT   			
+#    		manageEndpoint db F_CRM_QYPROCLS    			
+#    		manageEndpoint ejb CLIBMIGPRFA
+#           manageEndpoint
 #
 # Historico de versoes:
 #       Versão: 1.0
@@ -17,8 +20,23 @@
 #
 #		Versão: 1.1
 #             Autor: Felipe de Carvalho Alencar <felipe.alencar@engdb.com.br>
-#             Data: 06/2020
+#             Data: 05/2020
 #             Descrição: Adicao para a consulta e alteracao de serviços ib-ejb e melhora da logica para diminuicao de linhas de comando
+#
+#		Versão: 1.2
+#             Autor: Felipe de Carvalho Alencar <felipe.alencar@engdb.com.br>
+#             Data: 06/2020
+#             Descrição: Adicao para o fluxo continuar mesmo se o adapter permanecer vazio na entrada e adicao de mensagens amigaveis.
+#
+#		Versão: 1.3
+#             Autor: Felipe de Carvalho Alencar <felipe.alencar@engdb.com.br>
+#             Data: 06/2020
+#             Descrição: Adicao para retornar o apontamento do datasource para servicos db 
+#
+#               Versão: 1.3
+#             Autor: Felipe de Carvalho Alencar <felipe.alencar@engdb.com.br>
+#             Data: 06/2020
+#             Descrição: Adicao para retornar o apontamento do datasource para servicos db
 #
 
 #caso nenhum parametro seja inserido o script pergunta os parametros
@@ -33,6 +51,15 @@ fi
 
 #transforma a entrada para letras minusculas 
 adapterToLower=$(echo ${tipoAdapter} | awk '{ print tolower($1) }')
+
+#se o adapter permanecer vazio sera procurado da forma antiga, porem filtra pra ver qual eh tipo de adapter e continua o fluxo
+if [ -z ${tipoAdapter} ]
+then
+	echo -e "Sem o parametro do adapter vai demorar bastante, mas estou procurando... \nCaso nao saiba, veja o caminho do log do servico ou consulte a documentacao."
+    echo "..."
+    ppk adapter | grep ${servicename} > verificaAdapter.temp
+	adapterToLower=`grep -v bpm verificaAdapter.temp | cut -d "/" -f2 |  head -1`
+fi
 
 #valida qual tipo de adapter foi inserido
 case ${adapterToLower} in
@@ -79,10 +106,14 @@ case ${adapterToLower} in
         db)
                 adapter="isDB"
                 ppk adapter/db/tsw/methods | grep -w "${servicename}" > adapters.temp
+                procedure=$(grep -w statement adapters.temp | cut -d "=" -f2-)
+                datasource=$(grep -w datasource adapters.temp | cut -d "=" -f2-)
+                cd /infobus/${USER}/domains/ib_${USER}_domain/config/jdbc
+                EpDatasource=$(grep url *${datasource}* | cut -d "<" -f-2 | cut -d ">" -f2-)
+                #esta variavel so e necessaria para executar a funcao de record, como nao ha mudanca, nao sera usada no momento.
+                #endpoint=`echo -e "Procedure: ${procedure}" ; echo "Datasource: ${datasource}" ; echo "Apontamento: ${EpDatasource}"`
                 echo ""
-                endpoint=`echo "Procedure: " $(grep -w statement adapters.temp | cut -d "=" -f2-); echo "Datasource: " $(grep -w datasource adapters.temp | cut -d "=" -f2-)`
-                echo "Procedure: " $(grep -w statement adapters.temp | cut -d "=" -f2-)
-                echo "Datasource: " $(grep -w datasource adapters.temp | cut -d "=" -f2-)
+                echo "Apontamento:" ; echo  "Procedure:   ${procedure}" ; echo "Datasource:  ${datasource}" ; echo "Apontamento: ${EpDatasource}"
                 echo ""
         ;;
 #retorna o endpoint completo para um servico ib-ejb, mesmo que seja inserido o nome do alias do servico	
@@ -103,9 +134,19 @@ case ${adapterToLower} in
 				echo ""
         ;;
 
-        *)
-#caso nao passar nenhum parametro procura da forma antiga
-                ppk adapter | grep ${servicename}
+        bpm)
+		echo ""
+		echo "O parametro passado foi BPM, nao temos apontamento para um orquestrador."
+		echo ""
+		exit 0
+        ;;
+		
+#caso nao passar nenhum parametro esperado	
+		*)			
+		echo ""
+		echo "Insira um dos tipos de adapters esperados: db, webservice, ejb ou http."
+		echo ""	
+		exit 0
         ;;
 esac
 
@@ -117,6 +158,8 @@ record () {
         echo ""
         echo "Alteracao realizada. Estara disponivel apos o sinc e restart."
         echo ""
+		exit 0
+		
 }
 
 #aplica a alteracao no ambiente como no script "set-key-prefs.sh" passando o caminho completo. Trecho retirado do script citado.
